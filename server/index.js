@@ -53,7 +53,7 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
 // Initialize Gemini Chat Model
 const chatModel = new ChatGoogleGenerativeAI({
   apiKey: process.env.GOOGLE_API_KEY,
-  model: "gemini-3-flash-preview",
+  model: "gemini-2.5-flash",
   temperature: 0.7,
 });
 
@@ -165,7 +165,6 @@ User Question: ${query}
 Please provide a helpful, accurate answer based only on the context provided above. If the context doesn't contain enough information to answer the question, say so.`;
 
     // Get response from Gemini
-    console.log("Generating AI response...");
     const aiResponse = await chatModel.invoke(prompt);
     
     return res.json({ 

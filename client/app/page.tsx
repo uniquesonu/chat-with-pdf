@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Upload from "@/components/upload";
 import ChatScreen from "@/components/chat-component";
+import { UserButton } from "@clerk/nextjs";
 
 interface UploadResponse {
   success: boolean;
@@ -65,15 +66,28 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Status Indicator */}
-          {uploadedFile && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-full">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                Document Ready
-              </span>
-            </div>
-          )}
+          {/* Right side: Status Indicator + User Button */}
+          <div className="flex items-center gap-4">
+            {/* Status Indicator */}
+            {uploadedFile && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-full">
+                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                  Document Ready
+                </span>
+              </div>
+            )}
+
+            {/* User Profile Button */}
+            <UserButton
+              appearance={{
+                elements: {
+                  avatarBox:
+                    "w-10 h-10 ring-2 ring-violet-500/20 ring-offset-2 ring-offset-white dark:ring-offset-gray-950",
+                },
+              }}
+            />
+          </div>
         </div>
       </header>
 
