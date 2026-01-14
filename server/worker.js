@@ -71,7 +71,13 @@ const worker = new Worker('file-upload-queue', async (job) => {
   }
 }, { 
   concurrency: 5, 
-  connection: { host: 'localhost', port: 6379 } 
+  connection: { 
+    host: 'driven-jaguar-5205.upstash.io', 
+    password: "ARRVAAImcDFiZTNiYTNmNjQ5YTQ0NTNmYjdhM2JlZjQ0NDM3Njg5MHAxNTIwNQ", 
+    port: 6379, 
+    username: 'default',
+    tls: {}
+  } 
 });
 
 worker.on('completed', (job, result) => {

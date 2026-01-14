@@ -17,7 +17,15 @@ const QDRANT_URL = "https://1f4bc840-0038-4f00-8eba-a5e411b756c3.europe-west3-0.
 const QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.biLBK0EfUqCdJq3pQvO3Ppun46HmJVFhLYq_kPcNY4E";
 const COLLECTION_NAME = "pdf-embeddings";
 
-const queue = new Queue("file-upload-queue", { connection: { host: 'localhost', port: 6379 } });
+const queue = new Queue("file-upload-queue", { 
+  connection: { 
+    host: 'driven-jaguar-5205.upstash.io', 
+    password: "ARRVAAImcDFiZTNiYTNmNjQ5YTQ0NTNmYjdhM2JlZjQ0NDM3Njg5MHAxNTIwNQ", 
+    port: 6379, 
+    username: 'default',
+    tls: {}
+  } 
+});
 
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, "uploads");
