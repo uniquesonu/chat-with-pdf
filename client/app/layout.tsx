@@ -84,9 +84,6 @@ export default function RootLayout({
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-2 w-2 bg-violet-500"></span>
                     </span>
-                    <span className="text-sm font-medium text-violet-700 dark:text-violet-300">
-                      Powered by AI
-                    </span>
                   </div>
 
                   {/* Main Heading */}
