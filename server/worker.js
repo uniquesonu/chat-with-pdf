@@ -1,58 +1,94 @@
+import 'dotenv/config';
 import { Worker } from 'bullmq';
 import { QdrantVectorStore } from "@langchain/qdrant";
-import { OpenAIEmbeddings } from "@langchain/openai";
-import { Document } from "@langchain/core/documents";
-import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf"
-import { CharacterTextSplitter } from "@langchain/textsplitters";
+import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
+import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
+import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 
-const worker = new Worker('file-upload-queue', async job => {
+// Qdrant configuration
+const QDRANT_URL = "https://1f4bc840-0038-4f00-8eba-a5e411b756c3.europe-west3-0.gcp.cloud.qdrant.io";
+const QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.biLBK0EfUqCdJq3pQvO3Ppun46HmJVFhLYq_kPcNY4E";
+const COLLECTION_NAME = "pdf-embeddings";
+
+const worker = new Worker('file-upload-queue', async (job) => {
   try {
-    console.log("Processing job:", job.id);
-    console.log("Job data:", job.data);
+    console.log("=== Processing Job ===");
+    console.log("Job ID:", job.id);
+    
     const data = JSON.parse(job.data);
-    /* 
-    path: data.path,
-    read the pdf file from path,
-    chunk the pdf,
-    call to gemini embedding model for every chunk,
-    save the embedding in the quadrant db,
-    */
+    console.log("File path:", data.path);
 
-    // load the pdf
-    console.log("Loading PDF from:", data.path);
+    // Step 1: Load the PDF
+    console.log("Step 1: Loading PDF...");
     const loader = new PDFLoader(data.path);
     const docs = await loader.load();
-    console.log("Loaded docs count:", docs.length);
+    console.log(`Loaded ${docs.length} pages from PDF`);
 
-    const client = new QdrantVectorStore({
-      url: "https://1f4bc840-0038-4f00-8eba-a5e411b756c3.europe-west3-0.gcp.cloud.qdrant.io",
-      apiKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.biLBK0EfUqCdJq3pQvO3Ppun46HmJVFhLYq_kPcNY4E",
-    })
+    // Step 2: Split documents into chunks
+    console.log("Step 2: Splitting documents into chunks...");
+    const textSplitter = new RecursiveCharacterTextSplitter({
+      chunkSize: 500,
+      chunkOverlap: 50,
+    });
+    const splitDocs = await textSplitter.splitDocuments(docs);
+    console.log(`Split into ${splitDocs.length} chunks`);
 
-    const embeddings = new OpenAIEmbeddings({
-      
-    })
+    // Add metadata to each chunk
+    const docsWithMetadata = splitDocs.map((doc, index) => ({
+      ...doc,
+      metadata: {
+        ...doc.metadata,
+        filename: data.filename,
+        chunkIndex: index,
+        uploadedAt: new Date().toISOString(),
+      },
+    }));
+
+    // Step 3: Create embeddings using Gemini
+    console.log("Step 3: Creating Gemini embeddings...");
+    const embeddings = new GoogleGenerativeAIEmbeddings({
+      apiKey: process.env.GOOGLE_API_KEY,
+      model: "text-embedding-004",
+    });
+
+    // Step 4: Store in Qdrant vector database
+    console.log("Step 4: Storing embeddings in Qdrant...");
+    const vectorStore = await QdrantVectorStore.fromDocuments(
+      docsWithMetadata,
+      embeddings,
+      {
+        url: QDRANT_URL,
+        apiKey: QDRANT_API_KEY,
+        collectionName: COLLECTION_NAME,
+      }
+    );
+
+    console.log(`✅ Successfully stored ${docsWithMetadata.length} chunks in Qdrant!`);
     
-    const textSplitter = new CharacterTextSplitter({ chunkSize: 300, chunkOverlap: 0 });
-    const texts = await textSplitter.splitDocuments(docs);
-    console.log("Split texts count:", texts.length);
-    console.log("texts", texts);
-    
-    return { success: true, textsCount: texts.length };
+    return { 
+      success: true, 
+      filename: data.filename,
+      pagesCount: docs.length,
+      chunksCount: docsWithMetadata.length,
+    };
   } catch (error) {
-    console.error("Error processing job:", error);
+    console.error("❌ Error processing job:", error);
     throw error;
   }
-}, { concurrency: 100, connection: { host: 'localhost', port: 6379 } });
+}, { 
+  concurrency: 5, 
+  connection: { host: 'localhost', port: 6379 } 
+});
 
 worker.on('completed', (job, result) => {
-  console.log(`Job ${job.id} completed with result:`, result);
+  console.log(`✅ Job ${job.id} completed!`);
+  console.log("Result:", result);
 });
 
 worker.on('failed', (job, err) => {
-  console.error(`Job ${job.id} failed with error:`, err.message);
+  console.error(`❌ Job ${job.id} failed:`, err.message);
 });
 
 worker.on('ready', () => {
-  console.log('Worker is ready and listening for jobs...');
+  console.log('🚀 Worker is ready and listening for jobs...');
 });

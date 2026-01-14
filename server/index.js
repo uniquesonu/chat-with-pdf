@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -5,9 +6,16 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Queue } from "bullmq";
+import { QdrantVectorStore } from "@langchain/qdrant";
+import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Qdrant configuration
+const QDRANT_URL = "https://1f4bc840-0038-4f00-8eba-a5e411b756c3.europe-west3-0.gcp.cloud.qdrant.io";
+const QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.biLBK0EfUqCdJq3pQvO3Ppun46HmJVFhLYq_kPcNY4E";
+const COLLECTION_NAME = "pdf-embeddings";
 
 const queue = new Queue("file-upload-queue", { connection: { host: 'localhost', port: 6379 } });
 
@@ -26,6 +34,19 @@ const storage = multer.diskStorage({
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + "-" + file.originalname);
   },
+});
+
+// Initialize embeddings
+const embeddings = new GoogleGenerativeAIEmbeddings({
+  apiKey: process.env.GOOGLE_API_KEY,
+  model: "text-embedding-004",
+});
+
+// Initialize Gemini Chat Model
+const chatModel = new ChatGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_API_KEY,
+  model: "gemini-3-flash-preview",
+  temperature: 0.7,
 });
 
 // File filter for PDF only
@@ -52,7 +73,7 @@ app.use(express.json());
 
 // Health check endpoint
 app.get("/", (req, res) => {
-  res.json({ status: "ok", message: "PDF Upload Server is running" });
+  res.json({ status: "ok", message: "PDF Chat Server is running" });
 });
 
 // Upload PDF endpoint
@@ -92,6 +113,68 @@ app.post("/upload/pdf", upload.single("file"), async (req, res) => {
   }
 });
 
+// Chat endpoint - query the vector store
+app.get('/chat', async (req, res) => {
+  try {
+    const query = " Sun in Leo - General Traits"
+
+    
+    if (!query) {
+      return res.status(400).json({ error: "Query is required" });
+    }
+
+    console.log("Received query:", query);
+
+    // Connect to existing Qdrant vector store
+    const vectorStore = await QdrantVectorStore.fromExistingCollection(
+      embeddings,
+      {
+        url: QDRANT_URL,
+        apiKey: QDRANT_API_KEY,
+        collectionName: COLLECTION_NAME,
+      }
+    );
+
+    // Create retriever and search
+    const retriever = vectorStore.asRetriever({
+      k: 2,
+    });
+    
+    const results = await retriever.invoke(query);
+    console.log(`Found ${results.length} relevant chunks`);
+
+    // Build context from retrieved documents
+    const context = results.map(doc => doc.pageContent).join("\n\n");
+
+    // Create prompt for Gemini
+    const prompt = `You are a helpful AI assistant that answers questions based on the provided PDF context.
+
+Context from PDF:
+${context}
+
+User Question: ${query}
+
+Please provide a helpful, accurate answer based only on the context provided above. If the context doesn't contain enough information to answer the question, say so.`;
+
+    // Get response from Gemini
+    console.log("Generating AI response...");
+    const aiResponse = await chatModel.invoke(prompt);
+    
+    return res.json({ 
+      success: true,
+      query,
+      answer: aiResponse.content,
+      sources: results.map(doc => ({
+        content: doc.pageContent,
+        metadata: doc.metadata,
+      }))
+    });
+  } catch (error) {
+    console.error("Chat error:", error);
+    res.status(500).json({ error: "Failed to process query" });
+  }
+});
+
 // Error handling middleware for multer errors
 app.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
@@ -108,5 +191,5 @@ app.use((error, req, res, next) => {
 
 const PORT = 8000;
 app.listen(PORT, () => {
-  console.log(`Server started on port ${PORT}`);
+  console.log(`🚀 Server started on port ${PORT}`);
 });
