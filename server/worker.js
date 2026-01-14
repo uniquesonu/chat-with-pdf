@@ -19,19 +19,16 @@ const worker = new Worker('file-upload-queue', async (job) => {
     console.log("File path:", data.path);
 
     // Step 1: Load the PDF
-    console.log("Step 1: Loading PDF...");
     const loader = new PDFLoader(data.path);
     const docs = await loader.load();
     console.log(`Loaded ${docs.length} pages from PDF`);
 
     // Step 2: Split documents into chunks
-    console.log("Step 2: Splitting documents into chunks...");
     const textSplitter = new RecursiveCharacterTextSplitter({
       chunkSize: 500,
       chunkOverlap: 50,
     });
     const splitDocs = await textSplitter.splitDocuments(docs);
-    console.log(`Split into ${splitDocs.length} chunks`);
 
     // Add metadata to each chunk
     const docsWithMetadata = splitDocs.map((doc, index) => ({
@@ -45,14 +42,12 @@ const worker = new Worker('file-upload-queue', async (job) => {
     }));
 
     // Step 3: Create embeddings using Gemini
-    console.log("Step 3: Creating Gemini embeddings...");
     const embeddings = new GoogleGenerativeAIEmbeddings({
       apiKey: process.env.GOOGLE_API_KEY,
       model: "text-embedding-004",
     });
 
     // Step 4: Store in Qdrant vector database
-    console.log("Step 4: Storing embeddings in Qdrant...");
     const vectorStore = await QdrantVectorStore.fromDocuments(
       docsWithMetadata,
       embeddings,
@@ -63,7 +58,6 @@ const worker = new Worker('file-upload-queue', async (job) => {
       }
     );
 
-    console.log(`✅ Successfully stored ${docsWithMetadata.length} chunks in Qdrant!`);
     
     return { 
       success: true, 

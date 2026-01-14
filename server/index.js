@@ -114,9 +114,9 @@ app.post("/upload/pdf", upload.single("file"), async (req, res) => {
 });
 
 // Chat endpoint - query the vector store
-app.get('/chat', async (req, res) => {
+app.post('/chat', async (req, res) => {
   try {
-    const query = " Sun in Leo - General Traits"
+    const { query } = req.body;
 
     
     if (!query) {
