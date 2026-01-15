@@ -14,15 +14,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Qdrant configuration
-const QDRANT_URL = "https://1f4bc840-0038-4f00-8eba-a5e411b756c3.europe-west3-0.gcp.cloud.qdrant.io";
-const QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.biLBK0EfUqCdJq3pQvO3Ppun46HmJVFhLYq_kPcNY4E";
+const QDRANT_URL = process.env.QDRANT_URL;
+const QDRANT_API_KEY = process.env.QDRANT_API_KEY;
 
 const queue = new Queue("file-upload-queue", { 
   connection: { 
-    host: 'driven-jaguar-5205.upstash.io', 
-    password: "ARRVAAImcDFiZTNiYTNmNjQ5YTQ0NTNmYjdhM2JlZjQ0NDM3Njg5MHAxNTIwNQ", 
-    port: 6379, 
-    username: 'default',
+    host: process.env.REDIS_HOST, 
+    password: process.env.REDIS_PASSWORD, 
+    port: parseInt(process.env.REDIS_PORT), 
+    username: process.env.REDIS_USERNAME,
     tls: {}
   } 
 });
@@ -422,7 +422,7 @@ app.use((error, req, res, next) => {
   next();
 });
 
-const PORT = 8000;
+const PORT = process.env.PORT || 8000;
 app.listen(PORT, () => {
   console.log(`🚀 Server started on port ${PORT}`);
 });
