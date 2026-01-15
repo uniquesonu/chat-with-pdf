@@ -1,0 +1,29 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Pdf {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  filename     String // Server-generated unique filename
+  originalName String   @map("original_name") // User's original filename
+  filePath     String   @map("file_path")
+  fileSize     Int      @map("file_size")
+  pageCount    Int?     @map("page_count")
+  chunkCount   Int?     @map("chunk_count")
+  status       String   @default("processing") // processing, ready, failed
+  jobId        String?  @map("job_id") // BullMQ job ID for progress tracking
+  collectionId String?  @map("collection_id") // Qdrant collection for this PDF
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("pdfs")
+}

@@ -12,6 +12,7 @@ interface Source {
     filename: string;
     chunkIndex: number;
     uploadedAt: string;
+    pdfId?: string;
     pdf?: {
       info?: {
         Title?: string;
@@ -41,9 +42,14 @@ interface ChatMessage {
 interface ChatScreenProps {
   isEnabled: boolean;
   fileName?: string;
+  pdfId?: string;
 }
 
-const ChatScreen: React.FC<ChatScreenProps> = ({ isEnabled, fileName }) => {
+const ChatScreen: React.FC<ChatScreenProps> = ({
+  isEnabled,
+  fileName,
+  pdfId,
+}) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -67,6 +73,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ isEnabled, fileName }) => {
     }
   }, [isEnabled]);
 
+  // Clear messages when PDF changes
+  useEffect(() => {
+    setMessages([]);
+    setExpandedSources(new Set());
+  }, [pdfId]);
+
   const generateId = (): string => {
     return (
       Math.random().toString(36).substring(2, 15) + Date.now().toString(36)
@@ -86,7 +98,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ isEnabled, fileName }) => {
   };
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || !isEnabled || isLoading) return;
+    if (!inputValue.trim() || !isEnabled || isLoading || !pdfId) return;
 
     const userMessage: ChatMessage = {
       id: generateId(),
@@ -110,6 +122,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ isEnabled, fileName }) => {
     try {
       const response = await axios.post(`${API_BASE_URL}/chat`, {
         query: userMessage.content,
+        pdfId: pdfId,
       });
 
       const { success, answer, sources, query } = response.data;
@@ -133,13 +146,19 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ isEnabled, fileName }) => {
       }
     } catch (error) {
       console.error("Chat error:", error);
+      let errorMessage =
+        "Sorry, I encountered an error while processing your question. Please try again.";
+
+      if (axios.isAxiosError(error) && error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === loadingMessage.id
             ? {
                 ...msg,
-                content:
-                  "Sorry, I encountered an error while processing your question. Please try again.",
+                content: errorMessage,
                 isLoading: false,
               }
             : msg
@@ -251,10 +270,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ isEnabled, fileName }) => {
                   </svg>
                 </div>
                 <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-                  No Document Loaded
+                  No Document Selected
                 </h3>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                  Upload a PDF to start chatting
+                  Select a PDF from the sidebar or upload a new one
                 </p>
               </div>
             )}
@@ -489,7 +508,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ isEnabled, fileName }) => {
               placeholder={
                 isEnabled
                   ? "Ask a question about your PDF..."
-                  : "Upload a PDF first..."
+                  : "Select a PDF first..."
               }
               disabled={!isEnabled || isLoading}
               className="w-full px-5 py-3.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl text-sm text-gray-800 dark:text-gray-200 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500/50 focus:border-violet-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed pr-12"

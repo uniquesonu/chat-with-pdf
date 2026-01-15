@@ -1,38 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import Upload from "@/components/upload";
+import PdfSidebar, { Pdf } from "@/components/pdf-sidebar";
+import UploadModal from "@/components/upload-modal";
 import ChatScreen from "@/components/chat-component";
 import { UserButton } from "@clerk/nextjs";
 
-interface UploadResponse {
-  success: boolean;
-  message: string;
-  file: {
-    filename: string;
-    originalname: string;
-    size: number;
-    path: string;
-  };
-}
-
 export default function Home() {
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [serverFile, setServerFile] = useState<UploadResponse["file"] | null>(
-    null
-  );
-  const [error, setError] = useState<string | null>(null);
+  const [selectedPdf, setSelectedPdf] = useState<Pdf | null>(null);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const handleUploadComplete = (file: File, serverResponse: UploadResponse) => {
-    setUploadedFile(file);
-    setServerFile(serverResponse.file);
-    setError(null);
-    console.log("File uploaded successfully:", file.name, serverResponse);
+  const handleSelectPdf = (pdf: Pdf) => {
+    setSelectedPdf(pdf);
   };
 
-  const handleUploadError = (errorMessage: string) => {
-    setError(errorMessage);
-    console.error("Upload error:", errorMessage);
+  const handleUploadComplete = () => {
+    setRefreshTrigger((prev) => prev + 1);
+  };
+
+  const handleNewChat = () => {
+    setSelectedPdf(null);
   };
 
   return (
@@ -69,7 +57,7 @@ export default function Home() {
           {/* Right side: Status Indicator + User Button */}
           <div className="flex items-center gap-4">
             {/* Status Indicator */}
-            {uploadedFile && (
+            {selectedPdf && (
               <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-full">
                 <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
                 <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
@@ -93,73 +81,15 @@ export default function Home() {
 
       {/* Main Content */}
       <div className="flex p-4 gap-4 h-[calc(100vh-88px)]">
-        {/* Left Panel - Upload */}
+        {/* Left Panel - PDF Sidebar */}
         <div className="w-[30%] h-full">
           <div className="h-full bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl border border-gray-200/50 dark:border-gray-800/50 rounded-2xl shadow-xl shadow-gray-200/50 dark:shadow-gray-900/50 flex flex-col overflow-hidden">
-            {/* Panel Header */}
-            <div className="px-4 py-3 border-b border-gray-200/50 dark:border-gray-800/50 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                Documents
-              </h2>
-              <div className="flex items-center gap-1.5">
-                <div
-                  className={`w-2 h-2 rounded-full ${
-                    uploadedFile
-                      ? "bg-emerald-500"
-                      : "bg-gray-300 dark:bg-gray-600"
-                  }`}
-                />
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {uploadedFile ? "1 uploaded" : "None"}
-                </span>
-              </div>
-            </div>
-
-            {/* Upload Area */}
-            <div className="flex-1 overflow-y-auto">
-              <Upload
-                onUploadComplete={handleUploadComplete}
-                onUploadError={handleUploadError}
-              />
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="mx-4 mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl animate-in slide-in-from-bottom-2">
-                <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
-                  <svg
-                    className="w-4 h-4 flex-shrink-0"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                  {error}
-                </p>
-                <button
-                  onClick={() => setError(null)}
-                  className="mt-2 text-xs text-red-500 hover:text-red-700 dark:hover:text-red-300 font-medium"
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
-
-            {/* Quick Tips */}
-            <div className="px-4 py-3 border-t border-gray-200/50 dark:border-gray-800/50 bg-gray-50/50 dark:bg-gray-800/30">
-              <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">
-                💡 Tips
-              </p>
-              <ul className="text-xs text-gray-500 dark:text-gray-500 space-y-1">
-                <li>• Upload PDF files up to 10MB</li>
-                <li>• Ask specific questions for better answers</li>
-                <li>• View sources for answer verification</li>
-              </ul>
-            </div>
+            <PdfSidebar
+              selectedPdfId={selectedPdf?.id || null}
+              onSelectPdf={handleSelectPdf}
+              onUploadNew={() => setIsUploadModalOpen(true)}
+              refreshTrigger={refreshTrigger}
+            />
           </div>
         </div>
 
@@ -172,7 +102,7 @@ export default function Home() {
                 <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                   Chat
                 </h2>
-                {uploadedFile && (
+                {selectedPdf && (
                   <div className="flex items-center gap-2 px-3 py-1 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-full">
                     <svg
                       className="w-3 h-3 text-violet-500"
@@ -186,18 +116,15 @@ export default function Home() {
                       />
                     </svg>
                     <span className="text-xs font-medium text-violet-700 dark:text-violet-400 max-w-[200px] truncate">
-                      {uploadedFile.name}
+                      {selectedPdf.originalName}
                     </span>
                   </div>
                 )}
               </div>
 
-              {uploadedFile && (
+              {selectedPdf && (
                 <button
-                  onClick={() => {
-                    setUploadedFile(null);
-                    setServerFile(null);
-                  }}
+                  onClick={handleNewChat}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
                 >
                   <svg
@@ -221,13 +148,21 @@ export default function Home() {
             {/* Chat Content */}
             <div className="flex-1 overflow-hidden">
               <ChatScreen
-                isEnabled={!!uploadedFile}
-                fileName={uploadedFile?.name}
+                isEnabled={!!selectedPdf}
+                fileName={selectedPdf?.originalName}
+                pdfId={selectedPdf?.id}
               />
             </div>
           </div>
         </div>
       </div>
+
+      {/* Upload Modal */}
+      <UploadModal
+        isOpen={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        onUploadComplete={handleUploadComplete}
+      />
     </div>
   );
 }
