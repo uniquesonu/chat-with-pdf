@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
+import { useUser } from "@clerk/nextjs";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_MAIN_API_URL;
 
@@ -50,11 +51,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   fileName,
   pdfId,
 }) => {
+  const { user } = useUser();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [expandedSources, setExpandedSources] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -138,8 +140,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
                   sources,
                   isLoading: false,
                 }
-              : msg
-          )
+              : msg,
+          ),
         );
       } else {
         throw new Error("Failed to get response");
@@ -161,8 +163,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
                 content: errorMessage,
                 isLoading: false,
               }
-            : msg
-        )
+            : msg,
+        ),
       );
     } finally {
       setIsLoading(false);
@@ -190,7 +192,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     formatted = formatted.replace(/^\*\s+(.*)$/gm, '<li class="ml-4">$1</li>');
     formatted = formatted.replace(
       /(<li.*<\/li>)/s,
-      '<ul class="list-disc space-y-1">$1</ul>'
+      '<ul class="list-disc space-y-1">$1</ul>',
     );
 
     // Line breaks
@@ -241,14 +243,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
                         key={suggestion}
                         onClick={() =>
                           setInputValue(
-                            `What are the ${suggestion.toLowerCase()} of this document?`
+                            `What are the ${suggestion.toLowerCase()} of this document?`,
                           )
                         }
                         className="px-4 py-2 text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/30 rounded-full hover:bg-violet-100 dark:hover:bg-violet-900/50 transition-colors"
                       >
                         {suggestion}
                       </button>
-                    )
+                    ),
                   )}
                 </div>
               </div>
@@ -299,24 +301,32 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
                     }`}
                   >
                     <div
-                      className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center ${
+                      className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden ${
                         message.type === "user"
-                          ? "bg-gradient-to-br from-violet-500 to-purple-600"
+                          ? "bg-gradient-to-br from-violet-500 to-purple-600 ring-2 ring-violet-300 dark:ring-violet-700"
                           : "bg-gradient-to-br from-emerald-500 to-teal-600"
                       }`}
                     >
                       {message.type === "user" ? (
-                        <svg
-                          className="w-4 h-4 text-white"
-                          fill="currentColor"
-                          viewBox="0 0 20 20"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
-                            clipRule="evenodd"
+                        user?.imageUrl ? (
+                          <img
+                            src={user.imageUrl}
+                            alt={user.firstName || "User"}
+                            className="w-full h-full object-cover"
                           />
-                        </svg>
+                        ) : (
+                          <svg
+                            className="w-4 h-4 text-white"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                        )
                       ) : (
                         <svg
                           className="w-4 h-4 text-white"
