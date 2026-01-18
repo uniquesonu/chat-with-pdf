@@ -61,6 +61,15 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Session ID for temporary context memory - persists during component lifecycle
+  // but gets reset when PDF changes or page refreshes
+  const sessionIdRef = useRef<string | null>(null);
+
+  // Generate session ID on mount or when PDF changes
+  const generateSessionId = () => {
+    return `session-${user?.id || "anon"}-${pdfId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  };
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -75,10 +84,26 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
     }
   }, [isEnabled]);
 
-  // Clear messages when PDF changes
+  // Clear messages and session when PDF changes
   useEffect(() => {
+    // Clear the previous session on the server if it exists
+    if (sessionIdRef.current) {
+      // Optionally call DELETE /session/:sessionId to clear on server
+      // For now, we rely on server's auto-cleanup after inactivity
+      axios
+        .delete(`${API_BASE_URL}/session/${sessionIdRef.current}`)
+        .catch((err) => {
+          console.log("Session cleanup (non-critical):", err.message);
+        });
+    }
+
+    // Reset local state
     setMessages([]);
     setExpandedSources(new Set());
+
+    // Generate new session ID for this PDF
+    sessionIdRef.current = pdfId ? generateSessionId() : null;
+    console.log("New chat session:", sessionIdRef.current);
   }, [pdfId]);
 
   const generateId = (): string => {
@@ -125,6 +150,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({
       const response = await axios.post(`${API_BASE_URL}/chat`, {
         query: userMessage.content,
         pdfId: pdfId,
+        sessionId: sessionIdRef.current, // Send session ID for context memory
       });
 
       const { success, answer, sources, query } = response.data;

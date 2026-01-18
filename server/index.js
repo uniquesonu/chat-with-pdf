@@ -57,6 +57,88 @@ const chatModel = new ChatGoogleGenerativeAI({
   temperature: 0.7,
 });
 
+// ============================================
+// TEMPORARY CONTEXT MEMORY SYSTEM
+// ============================================
+// In-memory store for temporary chat sessions
+// Each session is identified by a unique sessionId
+// Sessions store conversation history and are cleared on refresh/PDF switch
+const chatSessions = new Map();
+
+// Session configuration
+const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes of inactivity
+const MAX_CONTEXT_MESSAGES = 10; // Keep last 10 messages for context
+
+// Clean up old sessions periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [sessionId, session] of chatSessions.entries()) {
+    if (now - session.lastActivity > SESSION_TIMEOUT) {
+      console.log(`Cleaning up inactive session: ${sessionId}`);
+      chatSessions.delete(sessionId);
+    }
+  }
+}, 5 * 60 * 1000); // Check every 5 minutes
+
+// Helper function to get or create a session
+function getOrCreateSession(sessionId, pdfId, userId) {
+  if (!chatSessions.has(sessionId)) {
+    chatSessions.set(sessionId, {
+      sessionId,
+      pdfId,
+      userId,
+      messages: [], // Array of {role: 'user'|'assistant', content: string}
+      createdAt: Date.now(),
+      lastActivity: Date.now(),
+    });
+    console.log(`Created new chat session: ${sessionId} for PDF: ${pdfId}`);
+  } else {
+    // Update last activity
+    const session = chatSessions.get(sessionId);
+    session.lastActivity = Date.now();
+  }
+  return chatSessions.get(sessionId);
+}
+
+// Helper function to add message to session
+function addMessageToSession(sessionId, role, content) {
+  const session = chatSessions.get(sessionId);
+  if (session) {
+    session.messages.push({ role, content, timestamp: Date.now() });
+    // Keep only last MAX_CONTEXT_MESSAGES messages
+    if (session.messages.length > MAX_CONTEXT_MESSAGES) {
+      session.messages = session.messages.slice(-MAX_CONTEXT_MESSAGES);
+    }
+    session.lastActivity = Date.now();
+  }
+}
+
+// Helper function to get conversation history for context
+function getConversationHistory(sessionId) {
+  const session = chatSessions.get(sessionId);
+  if (!session || session.messages.length === 0) {
+    return "";
+  }
+  
+  // Format conversation history for context
+  const history = session.messages
+    .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}`)
+    .join('\n\n');
+  
+  return `\n\n## CONVERSATION HISTORY (for context):\n${history}\n`;
+}
+
+// Helper function to clear a specific session
+function clearSession(sessionId) {
+  if (chatSessions.has(sessionId)) {
+    console.log(`Clearing session: ${sessionId}`);
+    chatSessions.delete(sessionId);
+    return true;
+  }
+  return false;
+}
+// ============================================
+
 // File filter for PDF only
 const fileFilter = (req, file, cb) => {
   if (file.mimetype === "application/pdf") {
@@ -258,7 +340,7 @@ app.get("/job/:jobId/progress", async (req, res) => {
 // Chat endpoint - query the vector store for a specific PDF
 app.post('/chat', async (req, res) => {
   try {
-    const { query, pdfId } = req.body;
+    const { query, pdfId, sessionId } = req.body;
 
     if (!query) {
       return res.status(400).json({ error: "Query is required" });
@@ -268,7 +350,11 @@ app.post('/chat', async (req, res) => {
       return res.status(400).json({ error: "PDF ID is required" });
     }
 
-    console.log("Received query:", query, "for PDF:", pdfId);
+    // sessionId is optional but recommended for maintaining context
+    // If not provided, we'll create one based on pdfId (loses context on refresh)
+    const effectiveSessionId = sessionId || `temp-${pdfId}`;
+
+    console.log("Received query:", query, "for PDF:", pdfId, "Session:", effectiveSessionId);
 
     // Get the PDF to find its collection ID
     const pdf = await prisma.pdf.findUnique({
@@ -285,6 +371,9 @@ app.post('/chat', async (req, res) => {
         status: pdf.status 
       });
     }
+
+    // Get or create session for this chat
+    const session = getOrCreateSession(effectiveSessionId, pdfId, pdf.userId);
 
     // Connect to the specific Qdrant collection for this PDF
     const vectorStore = await QdrantVectorStore.fromExistingCollection(
@@ -307,7 +396,10 @@ app.post('/chat', async (req, res) => {
     // Build context from retrieved documents
     const context = results.map(doc => doc.pageContent).join("\n\n---\n\n");
 
-    // Create prompt for Gemini
+    // Get conversation history for this session
+    const conversationHistory = getConversationHistory(effectiveSessionId);
+
+    // Create prompt for Gemini with conversation history
     const prompt = `You are **PDF Assistant**, an intelligent, analytical, and friendly AI assistant created to help users understand and interact with PDF documents. You are SMART and can analyze, count, extract, and infer information from the provided context.
 
 ## Your Core Traits:
@@ -315,6 +407,7 @@ app.post('/chat', async (req, res) => {
 - **Analytical**: You can count items, understand structure, and identify patterns
 - **Helpful**: You always try to give the most accurate and complete answer possible
 - **Friendly**: You communicate warmly with users
+- **Context-Aware**: You remember the conversation history and provide coherent, continuous responses
 
 ## Your Capabilities:
 1. **Deep Analysis**: Analyze text to extract exact information (counts, lists, names, dates, etc.)
@@ -323,6 +416,7 @@ app.post('/chat', async (req, res) => {
 4. **Information Extraction**: Find specific facts, figures, data points accurately
 5. **Logical Inference**: Make smart inferences when the answer can be derived from context
 6. **Summarization**: Provide clear, accurate summaries
+7. **Conversation Continuity**: Reference previous questions and answers when relevant
 
 ## CRITICAL INSTRUCTIONS FOR ANSWERING:
 
@@ -347,6 +441,7 @@ app.post('/chat', async (req, res) => {
 - Be CONFIDENT when you have the information
 - Extract SPECIFIC details from the context
 - Keep answers clean and complete - no partial/truncated lists!
+- **USE CONVERSATION HISTORY**: If the user refers to "it", "that", "the previous answer", look at the conversation history
 
 ## RESPONSE FORMAT RULES (VERY IMPORTANT):
 
@@ -357,6 +452,7 @@ Respond with: "Hello! 👋 I'm PDF Assistant, here to help you explore your docu
 Respond with your capabilities list.
 
 ### FOR VAGUE QUESTIONS (like "explain this", "give me more details", "tell me about it"):
+- **Check conversation history first** - the user might be referring to something from previous messages
 - If the context has useful information, **provide a helpful explanation/summary based on what's available**
 - Explain the main topic/concepts from the context
 - Make the response informative and useful
@@ -367,6 +463,7 @@ Respond with your capabilities list.
 - **Jump directly to answering the question**
 - **Start with the actual answer, not "Hello" or introductions**
 - Be direct and informative
+- Reference conversation history when the user's question relates to previous discussion
 
 ---
 
@@ -375,6 +472,8 @@ Respond with your capabilities list.
 ${context}
 
 ---
+${conversationHistory}
+---
 
 ## USER'S QUESTION: ${query}
 
@@ -382,6 +481,7 @@ ${context}
 1. **Determine the question type first:**
    - Is it JUST a greeting? → Use greeting response
    - Is it JUST asking about capabilities? → List capabilities
+   - Is it referring to previous conversation? → Check conversation history
    - Is it a vague question? → Provide a helpful explanation based on context
    - Is it a content/PDF question? → Answer directly WITHOUT any greeting
 2. **For content questions: Start your response with the actual answer**
@@ -390,13 +490,21 @@ ${context}
 5. Use markdown formatting for clear responses
 6. Only say you don't have info if the context truly has NOTHING relevant`;
 
+    // Add user query to session BEFORE getting AI response
+    addMessageToSession(effectiveSessionId, 'user', query);
+
     // Get response from Gemini
     const aiResponse = await chatModel.invoke(prompt);
+    
+    // Add AI response to session
+    addMessageToSession(effectiveSessionId, 'assistant', aiResponse.content);
     
     return res.json({ 
       success: true,
       query,
       answer: aiResponse.content,
+      sessionId: effectiveSessionId, // Return sessionId for client to use in next request
+      messageCount: session.messages.length, // For debugging
       sources: results.map(doc => ({
         content: doc.pageContent,
         metadata: doc.metadata,
@@ -405,6 +513,89 @@ ${context}
   } catch (error) {
     console.error("Chat error:", error);
     res.status(500).json({ error: "Failed to process query" });
+  }
+});
+
+// Clear a specific session (useful when switching PDFs or manually clearing context)
+app.delete('/session/:sessionId', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    const cleared = clearSession(sessionId);
+    
+    if (cleared) {
+      return res.json({
+        success: true,
+        message: `Session ${sessionId} cleared successfully`,
+      });
+    } else {
+      return res.status(404).json({
+        success: false,
+        error: "Session not found",
+      });
+    }
+  } catch (error) {
+    console.error("Clear session error:", error);
+    res.status(500).json({ error: "Failed to clear session" });
+  }
+});
+
+// Get session info (for debugging)
+app.get('/session/:sessionId', (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    const session = chatSessions.get(sessionId);
+    
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        error: "Session not found",
+      });
+    }
+    
+    return res.json({
+      success: true,
+      session: {
+        sessionId: session.sessionId,
+        pdfId: session.pdfId,
+        userId: session.userId,
+        messageCount: session.messages.length,
+        createdAt: new Date(session.createdAt).toISOString(),
+        lastActivity: new Date(session.lastActivity).toISOString(),
+        messages: session.messages.map(msg => ({
+          role: msg.role,
+          contentPreview: msg.content.substring(0, 100) + '...',
+          timestamp: new Date(msg.timestamp).toISOString(),
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("Get session error:", error);
+    res.status(500).json({ error: "Failed to get session" });
+  }
+});
+
+// Get all active sessions (for debugging/monitoring)
+app.get('/sessions', (req, res) => {
+  try {
+    const sessions = Array.from(chatSessions.values()).map(session => ({
+      sessionId: session.sessionId,
+      pdfId: session.pdfId,
+      userId: session.userId,
+      messageCount: session.messages.length,
+      createdAt: new Date(session.createdAt).toISOString(),
+      lastActivity: new Date(session.lastActivity).toISOString(),
+    }));
+    
+    return res.json({
+      success: true,
+      totalSessions: sessions.length,
+      sessions,
+    });
+  } catch (error) {
+    console.error("Get sessions error:", error);
+    res.status(500).json({ error: "Failed to get sessions" });
   }
 });
 
